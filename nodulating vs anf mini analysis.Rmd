@@ -1,0 +1,180 @@
+---
+title: "Nodulating and ANF by species"
+output: html_document
+date: "2024-11-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(tidyverse)
+library(rgbif)
+library(dplyr)
+library(terra)
+library(geodata)
+library(sf)
+citation(package = "rgbif")
+```
+
+```{r}
+GRIN_species_clean<-read_csv("unique_GRIN_species_clean.csv")
+
+selected_species_nodulating<-GRIN_species_clean %>% head(10)
+
+selected_species_ANF<-read_csv("Associative_endophytic nitrogen fixation records - papers to keep_trial.csv") %>% select(`species scientific name`) %>% unique() %>% head(10)
+
+```
+```{r}
+GBIF_nodulating_taxonomy<-name_backbone_checklist(selected_species_nodulating,verbose=TRUE)
+
+GBIF_ANF_taxonomy<-name_backbone_checklist(selected_species_ANF,verbose=TRUE)
+
+# make big GBIF dataset
+
+# fill in your gbif.org credentials 
+user <- "misha.kummel" # your gbif.org username 
+pwd <- "Pl@ntsAreC00l!!" # your gbif.org password
+email <- "misha.kummel@gmail.com" # your email 
+
+occ_download(
+pred_in("taxonKey", GBIF_nodulating_taxonomy$usageKey),
+format = "SIMPLE_CSV",
+user=user,pwd=pwd,email=email
+)
+#  Citation:
+  #GBIF Occurrence Download https://doi.org/10.15468/dl.cujhmq Accessed from R via rgbif (https://github.com/ropensci/rgbif) on 2024-12-02
+occ_download(
+pred_in("taxonKey", GBIF_ANF_taxonomy$usageKey),
+format = "SIMPLE_CSV",
+user=user,pwd=pwd,email=email
+)
+#Citation:
+  #GBIF Occurrence Download https://doi.org/10.15468/dl.evdxnf Accessed from R via rgbif (https://github.com/ropensci/rgbif) on 2024-12-02
+
+```
+```{r}
+ d_N <- occ_download_get('0012153-241126133413365') %>%
+    occ_download_import()
+d_A <- occ_download_get('0012154-241126133413365') %>%
+    occ_download_import()
+
+#write_csv(d_N,"d_N_selected.csv")
+#write_csv(d_A,"d_A_selected.csv")
+```
+
+
+
+
+```{r}
+Bioclim <- geodata::worldclim_global(var = "bio", #precipitation
+                                  res = 10, #10minutes
+                                  path = "~/Downloads") 
+plot(Bioclim)
+
+
+AVGTEMP<-Bioclim$wc2.1_10m_bio_1
+TEMPVARIANCE<-Bioclim$wc2.1_10m_bio_4
+AVGPRECIP<-Bioclim$wc2.1_10m_bio_12
+PRECIPVARIANCE<-Bioclim$wc2.1_10m_bio_15
+```
+
+```{r}
+DATA_N<-cbind(d_N$scientificName, d_N$decimalLongitude,d_N$decimalLatitude) %>% as.data.frame() %>% na.omit()
+colnames(DATA_N)<-c('species','lon','lat')
+
+#no geodetic datum
+#d_N$geodeticDatum
+
+rm(d_N)
+
+DATA_A<-cbind(d_A$scientificName, d_A$decimalLongitude,d_A$decimalLatitude) %>% as.data.frame() %>% na.omit()
+colnames(DATA_A)<-c('species','lon','lat')
+rm(d_A)
+```
+
+```{r}
+point_locations_N<-st_geometry(st_as_sf(DATA_N, coords = c("lon","lat"),crs='WGS84'))
+
+point_locations_A<-st_geometry(st_as_sf(DATA_A, coords = c("lon","lat"),crs='WGS84'))
+
+plot(AVGPRECIP)
+plot(point_locations_N,, add=TRUE, pch=20,col=alpha("red",0.1),cex=0.1)
+plot(point_locations_A, add=TRUE, pch=20,col=alpha("blue",0.1),cex=0.1)
+
+plot(log(AVGPRECIP))
+plot(point_locations_N,, add=TRUE, pch=20,col=alpha("red",0.1),cex=0.1)
+
+
+plot(log(AVGPRECIP))
+plot(point_locations_A, add=TRUE, pch=20,col=alpha("blue",0.1),cex=0.1)
+```
+
+```{r}
+DATA_N$temp_avg<-terra::extract(AVGTEMP,vect(point_locations_N))$wc2.1_10m_bio_1
+DATA_N$temp_var<-terra::extract(TEMPVARIANCE,vect(point_locations_N))$wc2.1_10m_bio_4
+DATA_N$prec_avg<-terra::extract(AVGPRECIP,vect(point_locations_N))$wc2.1_10m_bio_12
+DATA_N$prec_var<-terra::extract(PRECIPVARIANCE,vect(point_locations_N))$wc2.1_10m_bio_15
+DATA_N$nodulating<-1
+
+
+DATA_A$temp_avg<-terra::extract(AVGTEMP,vect(point_locations_A))$wc2.1_10m_bio_1
+DATA_A$temp_var<-terra::extract(TEMPVARIANCE,vect(point_locations_A))$wc2.1_10m_bio_4
+DATA_A$prec_avg<-terra::extract(AVGPRECIP,vect(point_locations_A))$wc2.1_10m_bio_12
+DATA_A$prec_var<-terra::extract(PRECIPVARIANCE,vect(point_locations_A))$wc2.1_10m_bio_15
+DATA_A$nodulating<-0
+```
+
+```{r}
+p1<-ggplot(DATA_A)+
+  geom_point(aes(x=prec_avg,y=temp_avg),color=alpha("darkblue",0.01))+
+  ggtitle("ANF occurrences by temp and prec avg") +
+  xlab("precipitation seasonality") + 
+  ylab("temperature seasonality")
+
+p2<-ggplot(DATA_N)+
+  geom_point(aes(x=prec_avg,y=temp_avg),color=alpha("darkblue",0.01))+
+  ggtitle("nodulating occurrences by temp and prec avg") +
+  xlab("precipitation seasonality") + 
+  ylab("temperature seasonality")
+
+ggplot(DATA_A%>% filter(prec_avg<500))+
+  geom_point(aes(x=prec_avg,y=temp_avg),color=alpha("darkblue",0.01))
+
+```
+```{r}
+pdf("p1.pdf")
+p1
+dev.off()
+pdf("p2.pdf")
+p2
+dev.off()
+pdf("p3.pdf")
+p3
+dev.off()
+pdf("p4.pdf")
+p4
+dev.off()
+```
+
+```{r}
+p3<-ggplot(DATA_A)+
+  geom_point(aes(x=prec_var,y=temp_var),color=alpha("darkblue",0.01))+
+  ggtitle("ANF occurrences by temp and prec seasonality") +
+  xlab("precipitation seasonality") + 
+  ylab("temperature seasonality")
+
+p4<-ggplot(DATA_N)+
+  geom_point(aes(x=prec_var,y=temp_var),color=alpha("darkblue",0.01))+
+  ggtitle("nodulating occurrences by temp and prec seasonality") +
+  xlab("precipitation seasonality") + 
+  ylab("temperature seasonality") 
+ 
+```
+
+
+
+
