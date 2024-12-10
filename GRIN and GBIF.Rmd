@@ -18,16 +18,23 @@ library(sf)
 citation(package = "rgbif")
 ```
 ```{r}
-GRIN_DATA<-read_csv("GRIN Dataset.csv")
+GRIN_DATA<-read_csv("data/GRIN Dataset.csv")
 ```
 ```{r}
 #unique(GRIN_DATA$`geographic source`)
 GRIN_species<-unique(GRIN_DATA$`host plant name`)
-write_csv(GRIN_species %>% as.data.frame(),"unique_GRIN_species.csv")
+#write_csv(GRIN_species %>% as.data.frame(),"data/unique_GRIN_species.csv")
 
-#check if GBIF
+ANF_species<-read_csv("data/Associative_endophytic nitrogen fixation records - temp species list.csv") %>% unique()
+GRIN_species<-read_csv("data/unique_GRIN_species_clean.csv")
+
+#check if GBIF nodulating
 check_GBIF_names<-name_backbone_checklist(name_data = GRIN_species, verbose = TRUE)
 nodulating_species_GBIF_numbers<-unique(check_GBIF_names$speciesKey) %>% na.omit()
+
+#check if GBIF ANF
+check_GBIF_names<-name_backbone_checklist(name_data = ANF_species, verbose = TRUE)
+ANF_species_GBIF_numbers<-unique(check_GBIF_names$speciesKey) %>% na.omit()
 ```
 
 ```{r}
@@ -37,7 +44,27 @@ GBIF_trial<-occ_search(speciesKey = nodulating_species_GBIF_numbers[1])
 
 
 ```{r}
-# make big GBIF dataset
+# make big GBIF datasets (pilot analysis)
+DATA_ANF<-c()
+for (i in ANF_species_GBIF_numbers) {
+  GBIF_temp<-occ_search(speciesKey = i)
+  GBIF_temp<-GBIF_temp$data
+  DATA_ANF<-DATA_ANF %>% bind_rows(GBIF_temp)
+  
+}
+#write_csv(DATA_ANF,"Data_ANF_occurence.csv")
+#DATA_ANF<-read_csv("DATA_ANF_occurence.csv")
+
+
+DATA_ANF_mini<-cbind(DATA_ANF$scientificName, DATA_ANF$decimalLongitude,DATA_ANF$decimalLatitude, DATA_ANF$geodeticDatum) %>% as.data.frame() %>% na.omit()
+colnames(DATA_ANF_mini)<-c('species','lon','lat','gd')
+
+rm(DATA_ANF)
+```
+
+
+```{r}
+############# nodulating ####
 DATA_nodulating<-c()
 for (i in nodulating_species_GBIF_numbers) {
   GBIF_temp<-occ_search(speciesKey = i)
@@ -46,7 +73,45 @@ for (i in nodulating_species_GBIF_numbers) {
   
 }
 
+
+#write_csv(DATA_nodulating,"Data_nodulation_occurence.csv")
+#DATA_nodulating<-read_csv("Data_nodulation_occurence.csv")
+
+
+DATA_nodulating_mini<-cbind(DATA_nodulating$scientificName, DATA_nodulating$decimalLongitude,DATA_nodulating$decimalLatitude, DATA_nodulating$geodeticDatum) %>% as.data.frame() %>% na.omit()
+colnames(DATA_nodulating_mini)<-c('species','lon','lat','gd')
+
+rm(DATA_nodulating)
 ```
+
+
+
+```{r}
+point_locations_ANF<-st_geometry(st_as_sf(DATA_ANF_mini, coords = c("lon","lat"),crs='WGS84'))
+
+point_locations_nodulating<-st_geometry(st_as_sf(DATA_nodulating_mini, coords = c("lon","lat"),crs='WGS84'))
+
+occurrenceplot_ANF<-ggplot()+
+  geom_sf(data=point_locations_ANF,size=0.1,color="blue",alpha=0.2)
+occurrenceplot_ANF
+
+occurrenceplot_nodulating<-ggplot()+
+  geom_sf(data=point_locations_nodulating,size=0.1,color="red",alpha=0.2)
+occurrenceplot_nodulating
+
+occurrenceplot<-ggplot()+
+  geom_sf(data=point_locations_nodulating,size=0.1,color="blue",alpha=0.1)+
+  geom_sf(data=point_locations_ANF,size=0.1,color="red",alpha=0.1)
+occurrenceplot
+
+occurrenceplot2<-ggplot()+
+  geom_sf(data=point_locations_ANF,size=0.2,color="red",alpha=0.2)+
+  geom_sf(data=point_locations_nodulating,size=0.2,color="blue",alpha=0.2)
+occurrenceplot2
+```
+```
+
+
 ```{r}
 # how would I plot all these occurrence records on a map (should I?)
 #DATA_nodulating<-read_csv("Data_nodulation_occurence.csv")
@@ -65,6 +130,10 @@ plot(point_locations)
 occurrenceplot<-ggplot()+
   geom_sf(data=point_locations,size=0.1)
 occurrenceplot
+
+occurrenceplot2<-ggplot()+
+  geom_sf(data=point_locations,size=0.1)
+occurrenceplot2
 ```
 
 ```{r}
@@ -90,29 +159,65 @@ AVGTEMP<-Bioclim$wc2.1_10m_bio_1
 TEMPVARIANCE<-Bioclim$wc2.1_10m_bio_4
 AVGPRECIP<-Bioclim$wc2.1_10m_bio_12
 PRECIPVARIANCE<-Bioclim$wc2.1_10m_bio_15
+```
 
+```{r}
+
+plot(log(AVGPRECIP),plg = list(title = 'log(avg precip (mm))',title.cex = 0.5))
+
+plot(AVGPRECIP,plg = list(title = '(avg precip (mm))',title.cex = 0.5))
+plot(point_locations_ANF, add=TRUE, pch=20,col=alpha("blue",0.1),cex=0.1)
+
+plot(log(AVGPRECIP),plg = list(title = 'log(avg precip (mm))',title.cex = 0.5))
+plot(point_locations_ANF, add=TRUE, pch=20,col=alpha("blue",0.1),cex=0.1)
+
+plot(log(AVGPRECIP),plg = list(title = 'log(avg precip (mm))',title.cex = 0.5))
+plot(point_locations_ANF, add=TRUE, pch=20,col=alpha("blue",0.2),cex=0.75)
+plot(point_locations_nodulating, add=TRUE, pch=20,col=alpha("red",0.1),cex=0.75)
 
 plot(AVGPRECIP)
-plot(point_locations, add=TRUE, pch=20,col=alpha("red",0.1),cex=0.1)
+plot(point_locations_nodulating, add=TRUE, pch=20,col=alpha("red",0.1),cex=0.1)
 
 plot(log(AVGPRECIP))
-plot(point_locations, add=TRUE, pch=20,col=alpha("red",0.1),cex=0.1)
+plot(point_locations_nodulating, add=TRUE, pch=20,col=alpha("red",0.1),cex=0.1)
 
 ggplot()+
   stat_spatraster(data=PRECIPVARIANCE)+
-  geom_sf(data=point_locations,size=0.1,color=alpha("darkred",0.05))
+  geom_sf(data=point_locations_nodulating,size=0.1,color=alpha("darkred",0.05))
   
 
 ```
 
+# now we want to extract the monthly prec values for ?? each of the observation points for each species? or make a range shapefile and extract averages? 
 ```{r}
-#now we want to extract the monthly prec values for ?? each of the observation points for each species? or make a range shapefile and extract averages? 
+
+DATA_ANF_mini$temp_avg<-terra::extract(AVGTEMP,vect(point_locations_ANF))$wc2.1_10m_bio_1
+DATA_ANF_mini$temp_var<-terra::extract(TEMPVARIANCE,vect(point_locations_ANF))$wc2.1_10m_bio_4
+DATA_ANF_mini$prec_avg<-terra::extract(AVGPRECIP,vect(point_locations_ANF))$wc2.1_10m_bio_12
+DATA_ANF_mini$prec_var<-terra::extract(PRECIPVARIANCE,vect(point_locations_ANF))$wc2.1_10m_bio_15
+
+DATA_nodulating_mini$temp_avg<-terra::extract(AVGTEMP,vect(point_locations_nodulating))$wc2.1_10m_bio_1
+DATA_nodulating_mini$temp_var<-terra::extract(TEMPVARIANCE,vect(point_locations_nodulating))$wc2.1_10m_bio_4
+DATA_nodulating_mini$prec_avg<-terra::extract(AVGPRECIP,vect(point_locations_nodulating))$wc2.1_10m_bio_12
+DATA_nodulating_mini$prec_var<-terra::extract(PRECIPVARIANCE,vect(point_locations_nodulating))$wc2.1_10m_bio_15
+```
+
+```{r}
+DATA_nodulating_mini$nodulating<-rep(1,length(DATA_nodulating_mini$species))
+DATA_ANF_mini$nodulating<-rep(0,length(DATA_ANF_mini$species))
+
+DATA_all<-rbind(DATA_nodulating_mini,DATA_ANF_mini)
+
+ggplot(DATA_all)+
+geom_boxplot(aes(x=nodulating,y=prec_avg))
 
 
-DATA_nodulating_mini$temp_avg<-terra::extract(AVGTEMP,vect(point_locations))$wc2.1_10m_bio_1
-DATA_nodulating_mini$temp_var<-terra::extract(TEMPVARIANCE,vect(point_locations))$wc2.1_10m_bio_4
-DATA_nodulating_mini$prec_avg<-terra::extract(AVGPRECIP,vect(point_locations))$wc2.1_10m_bio_12
-DATA_nodulating_mini$prec_var<-terra::extract(PRECIPVARIANCE,vect(point_locations))$wc2.1_10m_bio_15
+
+```
+
+```{r}
+
+
 
 ggplot(DATA_nodulating_mini)+
   geom_point(aes(x=prec_avg,y=temp_avg),color=alpha("darkred",0.01))
@@ -121,6 +226,9 @@ ggplot(DATA_nodulating_mini%>% filter(prec_avg<500))+
   geom_point(aes(x=prec_avg,y=temp_avg),color=alpha("darkred",0.01))
 
 ```
+
+
+
 ```{r}
 #bioclim data?? do i use bioclim on the data or do i use bioclim to get the data--I did some reading on bioclim and it's unclear to me
 ```
